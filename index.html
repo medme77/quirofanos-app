@@ -8,6 +8,7 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -54,6 +55,61 @@
           return <canvas ref={ref} width="200" height="200" className="border-4 border-gray-300 rounded-lg" />;
         };
 
+        // Componente de Escáner QR
+        const QRScanner = ({ onScan, onClose }) => {
+          const [scanning, setScanning] = useState(false);
+          const scannerRef = useRef(null);
+
+          useEffect(() => {
+            let html5QrCode;
+
+            const startScanner = async () => {
+              try {
+                html5QrCode = new Html5Qrcode("qr-reader");
+                
+                await html5QrCode.start(
+                  { facingMode: "environment" },
+                  {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 }
+                  },
+                  (decodedText) => {
+                    html5QrCode.stop();
+                    onScan(decodedText);
+                  }
+                );
+                setScanning(true);
+              } catch (err) {
+                console.error("Error al iniciar cámara:", err);
+                alert("⚠️ No se pudo acceder a la cámara. Verifica los permisos.");
+              }
+            };
+
+            startScanner();
+
+            return () => {
+              if (html5QrCode && scanning) {
+                html5QrCode.stop().catch(err => console.error(err));
+              }
+            };
+          }, []);
+
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl p-6 max-w-md w-full">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-bold">📷 Escanear QR</h3>
+                  <button onClick={onClose} className="text-gray-500 text-2xl">✕</button>
+                </div>
+                <div id="qr-reader" className="w-full"></div>
+                <p className="text-sm text-gray-600 text-center mt-4">
+                  Apunta la cámara al código QR
+                </p>
+              </div>
+            </div>
+          );
+        };
+
         function App() {
           const [view, setView] = useState('menu');
           const [quirofanos, setQuirofanos] = useState([]);
@@ -61,6 +117,7 @@
           const [todosRegistros, setTodosRegistros] = useState([]);
           const [codigo, setCodigo] = useState('');
           const [loading, setLoading] = useState(false);
+          const [showScanner, setShowScanner] = useState(false);
           
           const [nombre, setNombre] = useState('');
           const [cedula, setCedula] = useState('');
@@ -150,14 +207,25 @@
             alert('✅ Perfil guardado');
           };
 
-          const escanear = async () => {
+          const handleQRScan = (codigoQR) => {
+            setShowScanner(false);
+            setCodigo(codigoQR.toUpperCase());
+            // Auto-escanear después de leer el QR
+            setTimeout(() => {
+              escanear(codigoQR.toUpperCase());
+            }, 100);
+          };
+
+          const escanear = async (codigoManual) => {
+            const codigoUsar = codigoManual || codigo;
+            
             if (!perfilOk) {
               setConfig(true);
               return alert('⚠️ Configura tu perfil');
             }
             
-            const q = quirofanos.find(x => x.codigo === codigo.trim().toUpperCase());
-            if (!q) return alert('❌ Código inválido');
+            const q = quirofanos.find(x => x.codigo === codigoUsar.trim().toUpperCase());
+            if (!q) return alert('❌ Código inválido: ' + codigoUsar);
 
             const now = new Date();
             const reg = {
@@ -323,6 +391,8 @@
 
           return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+              {showScanner && <QRScanner onScan={handleQRScan} onClose={() => setShowScanner(false)} />}
+              
               <div className="max-w-4xl mx-auto">
                 <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
                   <div className="flex justify-between items-start">
@@ -425,15 +495,24 @@
                       </div>
                     </div>
                     <div className="max-w-md mx-auto space-y-4">
+                      <button
+                        onClick={() => setShowScanner(true)}
+                        className="w-full bg-purple-500 text-white py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2"
+                      >
+                        📷 Escanear con Cámara
+                      </button>
+                      
+                      <div className="text-center text-gray-500 font-bold">- O -</div>
+                      
                       <input
                         type="text"
                         value={codigo}
                         onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-                        placeholder="Ej: QF016 o SP001"
+                        placeholder="Escribir código: QF016 o SP001"
                         className="w-full p-4 text-lg border-2 rounded-lg text-center uppercase font-mono"
                         onKeyPress={(e) => e.key === 'Enter' && escanear()}
                       />
-                      <button onClick={escanear} className="w-full bg-green-500 text-white py-4 rounded-lg font-bold text-lg">
+                      <button onClick={() => escanear()} className="w-full bg-green-500 text-white py-4 rounded-lg font-bold text-lg">
                         ✓ Registrar Mi Entrada
                       </button>
                     </div>
@@ -483,7 +562,7 @@
                       <>
                         <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 mb-6">
                           <h3 className="font-bold mb-4">📊 Resumen</h3>
-                          <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div className="grid grid-cols-2 gap-4 mb-4">
                             <div className="bg-white rounded-lg p-3">
                               <p className="text-xs text-gray-600">Total</p>
                               <p className="text-2xl font-bold text-blue-600">{todosRegistros.length}</p>
